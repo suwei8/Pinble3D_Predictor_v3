@@ -12,6 +12,9 @@ LABELS_PATH = os.path.join(BASE_DIR, "data", "3d_shijihao_labels.csv")
 print(f"✅ 加载原始: {HIS_PATH}")
 df = pd.read_csv(HIS_PATH).dropna().reset_index(drop=True)
 
+# === 【关键列检查】 ===
+assert 'sim_test_code' in df.columns, f"⚠️ CSV列: {df.columns.tolist()}"
+
 # === 基础字段 ===
 df['sim_sum_val'] = df['sim_test_code'].astype(str).str.zfill(3).apply(lambda x: sum([int(c) for c in x]))
 df['sim_span'] = df['sim_test_code'].astype(str).str.zfill(3).apply(lambda x: abs(int(max(x)) - int(min(x))))
@@ -69,7 +72,7 @@ df['sim_digit_3'] = df['sim_test_code'].astype(str).str.zfill(3).str[2].astype(i
 df['single_hot_5'] = df['single_digit'].rolling(5, min_periods=1).apply(lambda x: Counter(x).most_common(1)[0][1])
 df['single_hot_3'] = df['single_digit'].rolling(3, min_periods=1).apply(lambda x: Counter(x).most_common(1)[0][1])
 
-# === 过滤最后一行 ===
+# === 丢掉最后一行 ===
 df = df.dropna().reset_index(drop=True)
 
 # === 保存 ===
