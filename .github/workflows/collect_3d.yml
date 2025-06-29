@@ -26,6 +26,7 @@ jobs:
       - name: 🗂️ Run 3D Collector
         run: |
           python collector/Lottery_3d.py
+          python predictor/feature_generator.py
 
       - name: 📤 Commit Collected Data
         run: |
