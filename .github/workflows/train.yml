@@ -1,12 +1,12 @@
-name: Run TFT Train
+name: Run Collector + Feature + Train (Full Auto)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 3 * * *'  # 每天 UTC 3点跑，可改
+    - cron: '0 3 * * *'  # UTC 3点自动跑，可按需改
 
 jobs:
-  train-tft:
+  collect-feature-train:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,14 +23,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🚀 Run Training
+      - name: 🌐 Run Collector
+        run: |
+          python collector/Lottery_3d.py
+
+      - name: 🔨 Run Feature Generator
+        run: |
+          python predictor/feature_generator.py
+
+      - name: 🚀 Run Train
         run: |
           python predictor/train_real.py
 
-      - name: 📤 Push updated models
+      - name: 📤 Push updated data + models
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
+          git add data/*.csv
           git add models/
-          git commit -m "🔄 Update trained TFT model"
+          git commit -m "🔄 Daily: Update data, features & TFT model"
           git push
