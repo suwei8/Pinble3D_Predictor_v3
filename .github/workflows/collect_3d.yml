@@ -2,15 +2,15 @@ name: 采集数据
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # 每天北京时间11点运行（UTC+3）
+    - cron: '0 2 * * *'  # 每天 UTC 2点，北京时间上午10点
   workflow_dispatch:
 
 jobs:
-  run-collector:
+  collect-latest-3d:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repository
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v3
 
       - name: 🐍 Setup Python
@@ -18,19 +18,19 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: ✅ Install dependencies
+      - name: ✅ Install Dependencies (Collector Only)
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install requests beautifulsoup4 lxml pandas
 
-      - name: 🗂️ Run Collector Script
+      - name: 🗂️ Run 3D Collector
         run: |
           python collector/Lottery_3d.py
 
-      - name: 📤 Commit updated data
+      - name: 📤 Commit Collected Data
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/
-          git commit -m "✅ Auto-update: Collected 3D data"
+          git add data/*.csv
+          git commit -m "🤖 Auto-update 3D data" || echo "No changes to commit"
           git push
