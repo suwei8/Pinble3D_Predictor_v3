@@ -1,0 +1,40 @@
+name: 每日定时工作流(完全自动化数据和模型持续可追溯增量更新)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 16 * * *'  # UTC 时间 16点 = 北京时间 0点
+
+jobs:
+  train-and-collect:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v3
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: ✅ Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 📡 Collect latest 3D Present Info
+        run: |
+          python collector/Lottery_3d.py
+
+      - name: 🔨 Train Incremental TFT Model
+        run: |
+          python predictor/train_real_incremental.py
+
+      - name: 💾 Commit and Push Updated Data & Model
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add data/ models/
+          git commit -m "🤖 Daily update: new data & updated model"
+          git push
