@@ -1,14 +1,16 @@
-name: 首次大训练时一键挂机跑完自动保存
+name: Run TFT Train
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'  # 每天 UTC 3点跑，可改
 
 jobs:
   train-tft:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout Repository
+      - name: 📥 Checkout
         uses: actions/checkout@v3
 
       - name: 🐍 Setup Python
@@ -16,19 +18,19 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: ✅ Install Requirements
+      - name: ✅ Install requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: ⚙️ Run Full Training Script
+      - name: 🚀 Run Training
         run: |
           python predictor/train_real.py
 
-      - name: 📤 Commit New Model
+      - name: 📤 Push updated models
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add models/tft_best.pth
-          git commit -m "🤖 Update trained TFT model"
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add models/
+          git commit -m "🔄 Update trained TFT model"
           git push
