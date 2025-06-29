@@ -1,24 +1,27 @@
-# predictor/train_real_incremental.py
-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tft_dataset import TFTDataset
 from tft_model import LotteryTFT
 import os
+from datetime import datetime
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# === 项目路径 ===
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.path.join(BASE_DIR, "data", "3d_shijihao_labels.csv")
-MODEL_PATH = os.path.join(BASE_DIR, "models", "tft_best.pth")
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-# === 加载数据 ===
+# ✅ 加载最近 N 期数据
 dataset = TFTDataset(CSV_PATH, seq_len=10)
+if len(dataset.df) > 50:
+    dataset.df = dataset.df.tail(100).reset_index(drop=True)
+print(f"✅ 增量数据集大小: {len(dataset.df)}")
+
 train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
-# === 初始化模型 ===
+# === 实例化模型 ===
 model = LotteryTFT(
     input_dim=len(dataset.feature_cols),
     model_dim=32,
@@ -26,28 +29,23 @@ model = LotteryTFT(
     num_layers=2
 ).to(device)
 
-# === 若存在历史模型则加载 ===
+MODEL_PATH = os.path.join(MODEL_DIR, "tft_best.pth")
 if os.path.exists(MODEL_PATH):
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-    print(f"✅ 已加载历史模型: {MODEL_PATH}")
+    print(f"✅ 已加载已有模型: {MODEL_PATH}")
+else:
+    print("❌ 未找到旧模型，将新建训练")
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 loss_mse = nn.MSELoss()
 loss_ce = nn.CrossEntropyLoss()
 loss_seq = nn.CrossEntropyLoss()
 
 best_loss = float('inf')
 
-# === 如果有历史 loss 可加载 ===
-# 这里简单写死，若有更完善的记录可以保存到 checkpoint 中
-if os.path.exists(MODEL_PATH):
-    best_loss = 1e8  # 也可以从外部文件记录恢复
-
-# === 训练循环 ===
-for epoch in range(50):  # 继续跑 50 轮，可自行改
+for epoch in range(5):
     model.train()
     total_loss = 0
-
     for seq_x, y_reg, y_cls, y_seq in train_loader:
         seq_x, y_reg, y_cls, y_seq = seq_x.to(device), y_reg.to(device), y_cls.to(device), y_seq.to(device)
 
@@ -67,10 +65,10 @@ for epoch in range(50):  # 继续跑 50 轮，可自行改
     avg_loss = total_loss / len(train_loader)
     print(f"Epoch {epoch} | Loss: {avg_loss:.4f}")
 
-    # 确保保存目录
-    os.makedirs(os.path.join(BASE_DIR, "models"), exist_ok=True)
-
     if avg_loss < best_loss:
         best_loss = avg_loss
+        now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        best_model_path = os.path.join(MODEL_DIR, f"tft_best_{now}.pth")
+        torch.save(model.state_dict(), best_model_path)
         torch.save(model.state_dict(), MODEL_PATH)
-        print(f"✅ 已保存增量最优模型: {MODEL_PATH}")
+        print(f"✅ 已保存 {best_model_path}")
