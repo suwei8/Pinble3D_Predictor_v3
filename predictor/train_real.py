@@ -50,7 +50,7 @@ else:
 # === 训练 ===
 best_loss = float('inf')
 
-for epoch in range(100):  # 可改 epoch 数
+for epoch in range(1000):  # 可改 epoch 数
     model.train()
     total_loss = 0
 
