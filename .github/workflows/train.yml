@@ -1,40 +1,34 @@
-name: Daily Train and Collect
+name: 首次大训练时一键挂机跑完自动保存
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 16 * * *'  # UTC 时间 16点，北京时间 0点
 
 jobs:
-  train-and-collect:
+  train-tft:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Setup Python
+      - name: 🐍 Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: ✅ Install Requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Collect new data
-        run: |
-          python collector/Lottery_3d.py
-
-      - name: Train TFT Model
+      - name: ⚙️ Run Full Training Script
         run: |
           python predictor/train_real.py
 
-      - name: Commit and Push
+      - name: 📤 Commit New Model
         run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add data/ models/
-          git commit -m "🤖 Daily update: new data & new model"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add models/tft_best.pth
+          git commit -m "🤖 Update trained TFT model"
           git push
