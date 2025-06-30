@@ -1,0 +1,37 @@
+name: 模拟真实回测
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 16 * * *'  # UTC 时间 16:30 = 北京时间 0:30
+
+jobs:
+  backtest-tft:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v3
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: ✅ Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🧩 Run backtester_real_local
+        run: |
+          python predictor/backtester_real_local.py
+
+      - name: 🚀 Push changes
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add data/ models/
+          git commit -m "🤖 Daily backtest: update with latest results" || echo "No changes to commit"
+          git push
+
