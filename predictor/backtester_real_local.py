@@ -1,11 +1,11 @@
 # predictor/backtester_real_local.py
-
+import sys
 import os
 import subprocess
 import pandas as pd
 import shutil
 import re
-
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HISTORY_PATH = os.path.join(BASE_DIR, "data", "3d_shijihao_history.csv")
 HISTORY_ALL_PATH = os.path.join(BASE_DIR, "data", "3d_shijihao_history_all.csv")
