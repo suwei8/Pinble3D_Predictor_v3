@@ -26,7 +26,7 @@ model.eval()
 
 # === 回测 ===
 correct_hits = 0
-total_samples = 20
+total_samples = 200
 hit_rate_per_epoch = []
 
 for idx in range(len(dataset) - total_samples, len(dataset)):
