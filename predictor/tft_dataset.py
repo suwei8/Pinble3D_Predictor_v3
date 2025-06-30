@@ -1,16 +1,24 @@
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from collections import Counter
 
 class TFTDataset(Dataset):
-    def __init__(self, csv_path, seq_len=10):
+    def __init__(self, csv_path, seq_len=10, mode="full"):
         self.seq_len = seq_len
+        self.mode = mode
+
         self.df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
 
-        # === ✅ Label Encoding 模式字段 ===
+        # === ✅ Label Encoding ===
         self.df['sim_pattern'] = self.df['sim_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
         self.df['open_pattern'] = self.df['open_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
+
+        # === ✅ 如果是增量模式，只取最新 seq_len 条 ===
+        if self.mode == "incremental":
+            self.df = self.df.tail(self.seq_len).reset_index(drop=True)
+            print(f"✅ 增量模式启用，仅使用最近 {self.seq_len} 条")
+        else:
+            print(f"✅ 全量模式，样本数: {len(self.df)}")
 
         # === ✅ 用到的特征列 ===
         self.feature_cols = [
@@ -26,7 +34,6 @@ class TFTDataset(Dataset):
             'single_hot_5', 'single_hot_3'
         ]
 
-        print(f"✅ 数据集大小: {len(self.df)}")
         print(f"✅ 特征列: {self.feature_cols}")
 
     def __len__(self):
@@ -41,7 +48,6 @@ class TFTDataset(Dataset):
             dtype=torch.float
         )
 
-        # === 目标：和值 / 独胆（下期百位）/ 三位号 ===
         y_reg = torch.tensor(self.df.loc[idx+self.seq_len-1, 'open_sum_val'], dtype=torch.float)
         y_cls = torch.tensor(self.df.loc[idx+self.seq_len-1, 'single_digit'], dtype=torch.long)
         y_seq = torch.tensor([
