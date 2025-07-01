@@ -14,7 +14,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# === 模式解析 ===
+# === 解析参数 ===
 mode = "full"
 if "--mode" in sys.argv:
     idx = sys.argv.index("--mode")
@@ -23,12 +23,17 @@ if "--mode" in sys.argv:
 
 print(f"✅ 当前训练模式: {mode}")
 
-# === 加载数据 ===
+# === 加载数据集 ===
 dataset = TFTDataset(CSV_PATH, seq_len=10, mode=mode)
-print(f"✅ 数据集大小: {len(dataset)}")
+print(f"✅ 数据集可用样本数: {len(dataset)}")
+
+if len(dataset) == 0:
+    print("❌ 样本不足，跳过本次训练")
+    sys.exit(0)
 
 train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
+# === 初始化模型 ===
 model = LotteryTFT(
     input_dim=len(dataset.feature_cols),
     model_dim=32,
@@ -41,7 +46,7 @@ loss_mse = nn.MSELoss()
 loss_ce = nn.CrossEntropyLoss()
 loss_seq = nn.CrossEntropyLoss()
 
-# === Resume ===
+# === 加载最近权重 ===
 latest_model = None
 for f in sorted(os.listdir(MODEL_DIR), reverse=True):
     if f.startswith("tft_best") and f.endswith(".pth"):
@@ -78,7 +83,7 @@ for epoch in range(max_epoch):
     if avg_loss < best_loss:
         best_loss = avg_loss
         if mode == "incremental":
-            save_name = os.path.join(MODEL_DIR, "tft_best_latest.pth")
+            save_name = os.path.join(MODEL_DIR, "tft_best_incremental.pth")
         else:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             save_name = os.path.join(MODEL_DIR, f"tft_best_{timestamp}.pth")

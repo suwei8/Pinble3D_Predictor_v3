@@ -4,23 +4,28 @@ from torch.utils.data import Dataset
 
 class TFTDataset(Dataset):
     def __init__(self, csv_path, seq_len=10, mode="full"):
-        self.seq_len = seq_len
         self.mode = mode
+        self.seq_len = seq_len
 
-        self.df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
+        df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
 
-        # === ✅ Label Encoding ===
-        self.df['sim_pattern'] = self.df['sim_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
-        self.df['open_pattern'] = self.df['open_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
+        # === Label Encoding ===
+        df['sim_pattern'] = df['sim_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
+        df['open_pattern'] = df['open_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
 
-        # === ✅ 如果是增量模式，只取最新 seq_len 条 ===
         if self.mode == "incremental":
-            self.df = self.df.tail(self.seq_len).reset_index(drop=True)
-            print(f"✅ 增量模式启用，仅使用最近 {self.seq_len} 条")
+            if len(df) < seq_len:
+                print(f"⚠️ 增量模式: 样本数 {len(df)} < seq_len={seq_len}，自动使用全量")
+                self.df = df
+            else:
+                self.df = df.tail(seq_len).reset_index(drop=True)
+                print(f"✅ 增量模式: 使用最近 {seq_len} 条")
         else:
-            print(f"✅ 全量模式，样本数: {len(self.df)}")
+            self.df = df
+            print(f"✅ 全量模式: 样本数 {len(df)}")
 
-        # === ✅ 用到的特征列 ===
+        self.seq_len = min(len(self.df), seq_len)
+
         self.feature_cols = [
             'sim_test_code', 'open_code',
             'sim_sum_val', 'sim_span',
@@ -37,11 +42,12 @@ class TFTDataset(Dataset):
         print(f"✅ 特征列: {self.feature_cols}")
 
     def __len__(self):
-        return len(self.df) - self.seq_len
+        l = len(self.df) - self.seq_len
+        return max(0, l)
 
     def __getitem__(self, idx):
         if idx + self.seq_len > len(self.df):
-            raise IndexError(f"❌ idx={idx} 太小，无法构成有效序列")
+            raise IndexError(f"❌ idx={idx} 太小，无法构成序列")
 
         seq_x = torch.tensor(
             self.df.loc[idx:idx+self.seq_len-1, self.feature_cols].values,
