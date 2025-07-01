@@ -35,6 +35,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: ⚙️ Run Feature Generator
+        run: |
+          python predictor/feature_generator.py
+
       - name: 🧩 Run train_real.py
         run: |
           echo "🎯 训练模式: ${{ github.event.inputs.mode }}"

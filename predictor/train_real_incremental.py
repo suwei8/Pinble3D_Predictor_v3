@@ -15,9 +15,17 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 # ✅ 加载最近 N 期数据
 dataset = TFTDataset(CSV_PATH, seq_len=10)
-if len(dataset.df) > 50:
+
+# 👉 只保留最近 100 条
+if len(dataset.df) > 100:
     dataset.df = dataset.df.tail(100).reset_index(drop=True)
-print(f"✅ 增量数据集大小: {len(dataset.df)}")
+
+# ✅ 检查是否足够样本构成序列
+if len(dataset) <= 0:
+    print("❌ 样本不足，跳过本次训练")
+    exit(0)
+
+print(f"✅ 增量数据集可用序列数: {len(dataset)}")
 
 train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
@@ -34,7 +42,7 @@ if os.path.exists(MODEL_PATH):
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     print(f"✅ 已加载已有模型: {MODEL_PATH}")
 else:
-    print("❌ 未找到旧模型，将新建训练")
+    print("⚠️ 未找到旧模型，将新建训练")
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 loss_mse = nn.MSELoss()
@@ -71,4 +79,4 @@ for epoch in range(5):
         best_model_path = os.path.join(MODEL_DIR, f"tft_best_{now}.pth")
         torch.save(model.state_dict(), best_model_path)
         torch.save(model.state_dict(), MODEL_PATH)
-        print(f"✅ 已保存 {best_model_path}")
+        print(f"✅ 已保存增量模型: {best_model_path}")

@@ -1,59 +1,65 @@
+import pandas as pd
 import torch
-from tft_model import LotteryTFT
-from tft_dataset import TFTDataset
-import os
-from glob import glob
-import argparse
+from torch.utils.data import Dataset
 
-# === CLI 参数 ===
-parser = argparse.ArgumentParser()
-parser.add_argument("--checkpoint", type=str, default=None, help="path to .pth checkpoint")
-args = parser.parse_args()
+class TFTDataset(Dataset):
+    def __init__(self, csv_path, seq_len=10, mode="full"):
+        self.mode = mode
+        self.seq_len = seq_len
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
 
-# === 路径 ===
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CSV_PATH = os.path.join(BASE_DIR, "data", "3d_shijihao_labels.csv")
-MODEL_DIR = os.path.join(BASE_DIR, "models")
+        # === Label Encoding ===
+        df['sim_pattern'] = df['sim_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
+        df['open_pattern'] = df['open_pattern'].map({'组六': 0, '组三': 1, '豹子': 2})
 
-# === 选模型 ===
-if args.checkpoint:
-    MODEL_PATH = os.path.join(MODEL_DIR, args.checkpoint)
-else:
-    pth_list = sorted(glob(os.path.join(MODEL_DIR, "tft_best_*.pth")))
-    if pth_list:
-        MODEL_PATH = pth_list[-1]
-    else:
-        MODEL_PATH = os.path.join(MODEL_DIR, "tft_best.pth")
+        if self.mode == "incremental":
+            if len(df) < seq_len:
+                print(f"⚠️ 增量模式: 样本数 {len(df)} < seq_len={seq_len}，自动使用全量")
+                self.df = df
+            else:
+                self.df = df.tail(seq_len).reset_index(drop=True)
+                print(f"✅ 增量模式: 使用最近 {seq_len} 条")
+        else:
+            self.df = df
+            print(f"✅ 全量模式: 样本数 {len(df)}")
 
-print(f"✅ 已选模型: {MODEL_PATH}")
+        self.seq_len = min(len(self.df), seq_len)
 
-# === 加载数据 ===
-dataset = TFTDataset(CSV_PATH, seq_len=10)
-print(f"✅ 数据集大小: {len(dataset)}")
+        self.feature_cols = [
+            'sim_test_code', 'open_code',
+            'sim_sum_val', 'sim_span',
+            'open_digit_1', 'open_digit_2', 'open_digit_3',
+            'open_sum_val', 'open_span',
+            'sim_pattern', 'open_pattern',
+            'sim_pattern_组三', 'open_pattern_组三',
+            'sim_pattern_组六', 'open_pattern_组六',
+            'sim_pattern_豹子', 'open_pattern_豹子',
+            'match_count', 'match_pos_count',
+            'single_hot_5', 'single_hot_3'
+        ]
 
-last_seq, y_reg, y_cls, y_seq = dataset[-1]
-last_seq = last_seq.unsqueeze(0).to(device)
-print(f"✅ last_seq shape: {last_seq.shape}")
+        print(f"✅ 特征列: {self.feature_cols}")
 
-model = LotteryTFT(
-    input_dim=len(dataset.feature_cols),
-    model_dim=32,
-    nhead=4,
-    num_layers=2
-).to(device)
+    def __len__(self):
+        l = len(self.df) - self.seq_len
+        return max(0, l)
 
-model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-model.eval()
+    def __getitem__(self, idx):
+        if idx + self.seq_len > len(self.df):
+            raise IndexError(f"❌ idx={idx} 太小，无法构成序列")
 
-with torch.no_grad():
-    pred_reg, pred_cls, pred_seq = model(last_seq)
+        seq_x = torch.tensor(
+            self.df.loc[idx:idx+self.seq_len-1, self.feature_cols].values,
+            dtype=torch.float
+        )
 
-    pred_sum = pred_reg.item()
-    pred_cls_digit = torch.argmax(pred_cls, dim=1).item()
-    pred_seq_digits = [torch.argmax(pred_seq[:, i*10:(i+1)*10], dim=1).item() for i in range(3)]
+        y_reg = torch.tensor(self.df.loc[idx+self.seq_len-1, 'open_sum_val'], dtype=torch.float)
+        y_cls = torch.tensor(self.df.loc[idx+self.seq_len-1, 'single_digit'], dtype=torch.long)
+        y_seq = torch.tensor([
+            self.df.loc[idx+self.seq_len-1, 'sim_digit_1'],
+            self.df.loc[idx+self.seq_len-1, 'sim_digit_2'],
+            self.df.loc[idx+self.seq_len-1, 'sim_digit_3']
+        ], dtype=torch.long)
 
-print(f"🎯 预测和值: {pred_sum:.2f}")
-print(f"🎯 预测独胆: {pred_cls_digit}")
-print(f"🎯 预测试机号3位: {pred_seq_digits}")
+        return seq_x, y_reg, y_cls, y_seq

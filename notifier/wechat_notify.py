@@ -50,3 +50,27 @@ def send_wechat_template(to_users, title, content1, content2, content3, remark):
             print(f"❌ 微信提醒发送失败: {e}")
         except ValueError:
             print(f"❌ 微信提醒返回格式错误")
+
+
+import pandas as pd
+
+if __name__ == "__main__":
+    # === 自动读最新预测结果 ===
+    df = pd.read_csv("data/next_predict_result.csv", sep="|")
+    last_row = df.iloc[-1]
+
+    issue = last_row["issue"]
+    pred_dan = last_row["pred_dandan"]
+    pred_digits = last_row["pred_digits"]
+    hit = last_row["hit"]
+
+    title = f"📢 福彩3D 拼搏试机{issue} 期预测v3"
+    content1 = f"独胆预测：{pred_dan}"
+    content2 = f"试机号预测：{pred_digits}"
+    content3 = f"预测状态：{hit}"
+    remark = "👉 请尽快查看，祝好运！"
+
+    # 这里替换成你要通知的 openid 列表
+    to_users = ["oXUv66MibUi7VInLBf7AHqMIY438"]
+
+    send_wechat_template(to_users, title, content1, content2, content3, remark)

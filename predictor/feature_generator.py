@@ -72,8 +72,6 @@ df['sim_digit_3'] = df['sim_test_code'].astype(str).str.zfill(3).str[2].astype(i
 df['single_hot_5'] = df['single_digit'].rolling(5, min_periods=1).apply(lambda x: Counter(x).most_common(1)[0][1])
 df['single_hot_3'] = df['single_digit'].rolling(3, min_periods=1).apply(lambda x: Counter(x).most_common(1)[0][1])
 
-# === 丢掉最后一行 ===
-df = df.dropna().reset_index(drop=True)
 
 # === 保存 ===
 df.to_csv(LABELS_PATH, index=False)

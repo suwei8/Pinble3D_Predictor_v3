@@ -1,119 +1,152 @@
-# collector/Lottery_3d.py
+# collector/pinble_scraper.py
 
 import requests
 from bs4 import BeautifulSoup
-import re
-import os
 import pandas as pd
+import os
+import time
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PRESENTINFO_PATH = os.path.join(BASE_DIR, "data", "pinble3d_presentinfo.csv")
-HISTORY_PATH = os.path.join(BASE_DIR, "data", "3d_shijihao_history.csv")
+DATA_PATH = os.path.join(BASE_DIR, "data", "3d_shijihao_history.csv")
 
-# ✅ 新接口地址
-URL = "http://134.175.237.107:8901"
-
-def fetch_presentinfo():
-    resp = requests.get(URL, timeout=30)
-    resp.encoding = "utf-8"
-
-    soup = BeautifulSoup(resp.text, "xml")
-    html_text = soup.find("string").text
-    html = BeautifulSoup(html_text, "html.parser")
-
-    tables = html.find_all("table")
-    for i in range(len(tables)):
-        if "福彩3D" in tables[i].text:
-            date_tag = tables[i].find("span", class_="kaiTime")
-            date = date_tag.get_text(strip=True) if date_tag else None
-
-            next_table = tables[i + 1] if i + 1 < len(tables) else None
-            if next_table:
-                text = next_table.get_text()
-
-                def extract_digits(pattern):
-                    m = re.search(pattern, text)
-                    return ''.join(re.findall(r"\d", m.group(1))) if m else None
-
-                def extract_focus(text):
-                    m = re.search(r"关注码.*?：(.*?)金码", text)
-                    return ''.join(re.findall(r"\d", m.group(1))) if m else None
-
-                def extract_gold(text):
-                    m = re.search(r"金码.*?：.*?(\d+)", text)
-                    return m.group(1) if m else None
-
-                sim_code = extract_digits(r"模拟试机号：\[(.*?)\]")
-                open_code = extract_digits(r"开奖号：\[(.*?)\]")
-                focus_code = extract_focus(text)
-                gold_code = extract_gold(text)
-
-                issue_tag = tables[i].find("a")
-                issue = re.search(r"(\d{7})期", issue_tag.text).group(1) if issue_tag else None
-
-                return {
-                    "issue": issue,
-                    "date": date,
-                    "sim_code": sim_code,
-                    "focus_code": focus_code,
-                    "gold_code": gold_code,
-                    "open_code": open_code
-                }
-
-    return None
+URL = "http://134.175.237.107:8902/LotteryOneList3D.aspx?name=3D"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "http://www.pinble.com/",
+}
 
 
-def issue_exists(issue):
-    exists = False
-    if os.path.exists(PRESENTINFO_PATH):
-        df = pd.read_csv(PRESENTINFO_PATH, usecols=["issue"], dtype={"issue": str})
-        if issue in df["issue"].values:
-            exists = True
-    if os.path.exists(HISTORY_PATH):
-        df = pd.read_csv(HISTORY_PATH, usecols=["issue"], dtype={"issue": str})
-        if issue in df["issue"].values:
-            exists = True
-    return exists
+def get_viewstate_and_eventvalidation(session, html):
+    soup = BeautifulSoup(html, "html.parser")
+    viewstate = soup.find("input", id="__VIEWSTATE")["value"]
+    event_node = soup.find("input", id="__EVENTVALIDATION")
+    eventvalidation = event_node["value"] if event_node else ""
+    return viewstate, eventvalidation
 
 
-def save_presentinfo(info):
-    df = pd.DataFrame([{
-        "issue": info["issue"],
-        "date": info["date"],
-        "sim_code": info["sim_code"],
-        "focus_code": info["focus_code"],
-        "gold_code": info["gold_code"],
-        "open_code": info["open_code"]
-    }])
-    if os.path.exists(PRESENTINFO_PATH):
-        df.to_csv(PRESENTINFO_PATH, mode="a", index=False, header=False, encoding="utf-8-sig")
+def scrape_page(session, page_num, viewstate, eventvalidation):
+    data = {
+        "__EVENTTARGET": "AspNetPager1",
+        "__EVENTARGUMENT": str(page_num),
+        "__VIEWSTATE": viewstate,
+    }
+    if eventvalidation:
+        data["__EVENTVALIDATION"] = eventvalidation
+
+    resp = session.post(URL, headers=HEADERS, data=data, timeout=10)
+    resp.encoding = "gb2312"
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    new_viewstate, new_eventvalidation = get_viewstate_and_eventvalidation(session, resp.text)
+
+    table = soup.find("table", id="MyGridView")
+    if not table:
+        raise RuntimeError(f"❌ 第 {page_num} 页未找到表格")
+
+    rows = table.find_all("tr")[1:]
+    data_rows = []
+    for row in rows:
+        cols = row.find_all("td")
+        if len(cols) >= 4:
+            date = cols[0].get_text(strip=True)
+            issue = cols[1].get_text(strip=True)
+            sim_test = cols[2].get_text(strip=True).zfill(3)
+            open_code = cols[3].get_text(strip=True)
+            data_rows.append([date, issue, sim_test, open_code])
+    return data_rows, new_viewstate, new_eventvalidation
+
+# 特征处理模块
+def enrich_features(df):
+    df["sim_digit_1"] = df["sim_test_code"].str[0].astype(int)
+    df["sim_digit_2"] = df["sim_test_code"].str[1].astype(int)
+    df["sim_digit_3"] = df["sim_test_code"].str[2].astype(int)
+
+    df["open_digit_1"] = df["open_code"].str[0].astype(int)
+    df["open_digit_2"] = df["open_code"].str[1].astype(int)
+    df["open_digit_3"] = df["open_code"].str[2].astype(int)
+
+    df["sim_sum_val"] = df[["sim_digit_1", "sim_digit_2", "sim_digit_3"]].sum(axis=1)
+    df["sim_span"] = df[["sim_digit_1", "sim_digit_2", "sim_digit_3"]].max(axis=1) - df[["sim_digit_1", "sim_digit_2", "sim_digit_3"]].min(axis=1)
+    df["sim_pattern"] = df.apply(lambda row: "组三" if len(set([row.sim_digit_1, row.sim_digit_2, row.sim_digit_3])) == 2 else ("豹子" if len(set([row.sim_digit_1, row.sim_digit_2, row.sim_digit_3])) == 1 else "组六"), axis=1)
+
+    df["open_sum_val"] = df[["open_digit_1", "open_digit_2", "open_digit_3"]].sum(axis=1)
+    df["open_span"] = df[["open_digit_1", "open_digit_2", "open_digit_3"]].max(axis=1) - df[["open_digit_1", "open_digit_2", "open_digit_3"]].min(axis=1)
+    df["open_pattern"] = df.apply(lambda row: "组三" if len(set([row.open_digit_1, row.open_digit_2, row.open_digit_3])) == 2 else ("豹子" if len(set([row.open_digit_1, row.open_digit_2, row.open_digit_3])) == 1 else "组六"), axis=1)
+
+    def count_match(row):
+        sim_digits = {row.sim_digit_1, row.sim_digit_2, row.sim_digit_3}
+        open_digits = {row.open_digit_1, row.open_digit_2, row.open_digit_3}
+        return len(sim_digits & open_digits)
+
+    def count_pos_match(row):
+        return int(row.sim_digit_1 == row.open_digit_1) + int(row.sim_digit_2 == row.open_digit_2) + int(row.sim_digit_3 == row.open_digit_3)
+
+    df["match_count"] = df.apply(count_match, axis=1)
+    df["match_pos_count"] = df.apply(count_pos_match, axis=1)
+
+    return df
+
+def scrape_all_pages(max_pages=208, delay=1.0):
+    # ✅ 加载已有数据
+    if os.path.exists(DATA_PATH):
+        try:
+            df_existing = pd.read_csv(DATA_PATH, dtype={"issue": str, "sim_test_code": str, "open_code": str})
+            existing_issues = set(df_existing["issue"])
+            print(f"📦 已加载历史数据 {len(existing_issues)} 条")
+        except Exception as e:
+            print(f"⚠️ 历史数据文件损坏或空文件，忽略加载：{e}")
+            df_existing = pd.DataFrame(columns=["date", "issue", "sim_test_code", "open_code"])
+            existing_issues = set()
     else:
-        df.to_csv(PRESENTINFO_PATH, index=False, encoding="utf-8-sig")
-    print(f"✅ 已保存至 {PRESENTINFO_PATH}")
+        df_existing = pd.DataFrame(columns=["date", "issue", "sim_test_code", "open_code"])
+        existing_issues = set()
 
 
-def append_history(info):
-    df = pd.DataFrame([{
-        "date": info["date"],
-        "issue": info["issue"],
-        "sim_test_code": info["sim_code"],
-        "open_code": info["open_code"]
-    }])
-    if os.path.exists(HISTORY_PATH):
-        df.to_csv(HISTORY_PATH, mode="a", index=False, header=False, encoding="utf-8-sig")
-    else:
-        df.to_csv(HISTORY_PATH, index=False, encoding="utf-8-sig")
-    print(f"📦 已追加至 {HISTORY_PATH}")
+    session = requests.Session()
+    init_resp = session.get(URL, headers=HEADERS, timeout=10)
+    init_resp.encoding = "gb2312"
+    viewstate, eventvalidation = get_viewstate_and_eventvalidation(session, init_resp.text)
+
+    new_data = []
+    for page in range(1, max_pages + 1):
+        try:
+            print(f"📄 正在抓取第 {page} 页")
+            page_data, viewstate, eventvalidation = scrape_page(session, page, viewstate, eventvalidation)
+
+            # 过滤掉已存在的 issue
+            page_data_filtered = [row for row in page_data if row[1] not in existing_issues]
+
+            if page_data_filtered:
+                new_data.extend(page_data_filtered)
+                print(f"➕ 本页新增 {len(page_data_filtered)} 条")
+            else:
+                print(f"⏩ 本页数据已存在，跳过")
+
+            time.sleep(delay)
+        except Exception as e:
+            print(f"⚠️ 第 {page} 页抓取失败：{e}")
+            continue
+
+    df_new = pd.DataFrame(new_data, columns=["date", "issue", "sim_test_code", "open_code"])
+    df_new["sim_test_code"] = df_new["sim_test_code"].astype(str).str.zfill(3)
+
+    # 合并新旧数据
+    df_all = pd.concat([df_existing, df_new], ignore_index=True)
+    df_all = df_all.drop_duplicates(subset=["issue"])
+    df_all = df_all.sort_values(by="issue", ascending=True).reset_index(drop=True)
+    return df_all
+
+
+def save_to_csv(df):
+    os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
+    df.to_csv(DATA_PATH, index=False, encoding="utf-8-sig")
+    print(f"✅ 已保存到 {DATA_PATH}")
 
 
 if __name__ == "__main__":
-    info = fetch_presentinfo()
-    if info:
-        print(f"🎯 获取成功：{info}")
-        if issue_exists(info["issue"]):
-            print(f"⏩ 已存在 issue={info['issue']}，跳过采集")
-        else:
-            save_presentinfo(info)
-            append_history(info)
-    else:
-        print("❌ 未能提取到福彩3D PresentInformation 内容")
+    df_raw = scrape_all_pages(max_pages=1)               # 抓原始数据
+    # df_raw = scrape_all_pages()  # 默认 max_pages=208，采集全部页
+    save_to_csv(df_raw)                                   # ✅ 原始数据单独保存
+    df = enrich_features(df_raw.copy())                   # 特征增强，避免污染原始数据
+    df.to_csv(os.path.join(BASE_DIR, "data", "3d_shijihao_features.csv"), index=False, encoding="utf-8-sig")
+    print("✅ 3d_shijihao_features.csv 生成完毕")
