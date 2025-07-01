@@ -103,7 +103,7 @@ def scrape_all_pages(max_pages=208, delay=1.0):
 
 
     session = requests.Session()
-    init_resp = session.get(URL, headers=HEADERS, timeout=10)
+    init_resp = session.get(URL, headers=HEADERS, timeout=60)
     init_resp.encoding = "gb2312"
     viewstate, eventvalidation = get_viewstate_and_eventvalidation(session, init_resp.text)
 
