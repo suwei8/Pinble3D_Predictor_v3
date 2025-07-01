@@ -1,0 +1,55 @@
+name: 🔁 手动训练 LotteryTFT
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '训练模式: full(全量) 或 incremental(增量)'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - incremental
+      epoch:
+        description: '覆盖最大 epoch（可选）'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  train-tft:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v3
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: ✅ Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🧩 Run train_real.py
+        run: |
+          echo "🎯 训练模式: ${{ github.event.inputs.mode }}"
+          echo "🎯 覆盖 epoch: ${{ github.event.inputs.epoch }}"
+
+          if [ "${{ github.event.inputs.epoch }}" = "" ]; then
+            python predictor/train_real.py --mode ${{ github.event.inputs.mode }}
+          else
+            python predictor/train_real.py --mode ${{ github.event.inputs.mode }} --epoch ${{ github.event.inputs.epoch }}
+          fi
+
+      - name: 🚀 Commit trained model
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add models/
+          git commit -m "🤖 [Actions] TrainReal: mode=${{ github.event.inputs.mode }} epoch=${{ github.event.inputs.epoch }}" || echo "No changes to commit"
+          git push
