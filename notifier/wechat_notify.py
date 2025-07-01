@@ -64,7 +64,7 @@ if __name__ == "__main__":
     pred_digits = last_row["pred_digits"]
     hit = last_row["hit"]
 
-    title = f"📢 福彩3D 拼搏试机{issue} 期预测v3"
+    title = f"📢 福彩3D拼搏{issue}期v3"
     content1 = f"独胆预测：{pred_dan}"
     content2 = f"试机号预测：{pred_digits}"
     content3 = f"预测状态：{hit}"
