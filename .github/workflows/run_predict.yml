@@ -3,7 +3,8 @@ name: 定时采集-增量训练-预测-推送
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 16 * * *'  # UTC 时间 16:30 = 北京时间 0:30
+    - cron: '10 3 * * *'  # UTC 时间 03:10 = 北京时间 11:10
+
 
 jobs:
   backtest-tft:
